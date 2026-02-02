@@ -1,1 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>User Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { font-family: Arial; max-width: 900px; margin:auto; padding:15px; }
+    input, button, select { padding:8px; margin:6px 0; width:100%; }
+    table { width:100%; border-collapse: collapse; margin-top:15px; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:center; }
+    th { background:#f4f4f4; }
+    .hidden { display:none; }
+    .green { color:green; }
+    .red { color:red; }
+  </style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>User Login</h2>
+  <input id="email" type="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <p id="loginErr" style="color:red;"></p>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden">
+  <h2>My Transactions</h2>
+
+  <!-- ADD TRANSACTION -->
+  <h3>Add Transaction</h3>
+  <input id="amount" type="number" placeholder="Amount">
+  <select id="type">
+    <option value="IN">IN</option>
+    <option value="OUT">OUT</option>
+  </select>
+  <input id="note" placeholder="Note">
+  <button onclick="addTx()">Add</button>
+
+  <!-- TABLE -->
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+/************ CONFIG ************/
+const SUPABASE_URL = "PASTE_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "PASTE_SUPABASE_ANON_KEY";
+const API_BASE = "https://transaction-app-lilac.vercel.app";
+/********************************/
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+
+let session = null;
+
+async function login() {
+  const email = emailInput.value;
+  const password = passwordInput.value;
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email, password
+  });
+
+  if (error) {
+    loginErr.innerText = error.message;
+    return;
+  }
+
+  session = data.session;
+  showDashboard();
+}
+
+async function showDashboard() {
+  loginBox.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+  loadTx();
+}
+
+async function loadTx() {
+  const res = await fetch(`${API_BASE}/api/user`, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  const data = await res.json();
+  const body = document.getElementById("rows");
+  body.innerHTML = "";
+
+  data.forEach(t => {
+    body.innerHTML += `
+      <tr>
+        <td>${new Date(t.created_at).toLocaleDateString()}</td>
+        <td class="${t.type === 'IN' ? 'green' : 'red'}">${t.type}</td>
+        <td>${t.amount}</td>
+        <td>${t.note || ""}</td>
+      </tr>
+    `;
+  });
+}
+
+async function addTx() {
+  const amt = Number(amount.value);
+  const type = document.getElementById("type").value;
+  const note = document.getElementById("note").value;
+
+  if (!amt) return alert("Enter amount");
+
+  await fetch(`${API_BASE}/api/user`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({ amount: amt, type, note })
+  });
+
+  amount.value = "";
+  note.value = "";
+  loadTx();
+}
+
+async function logout() {
+  await supabase.auth.signOut();
+  location.reload();
+}
+
+// Auto login
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    session = data.session;
+    showDashboard();
+  }
+})();
+</script>
+
+</body>
+</html>
 
