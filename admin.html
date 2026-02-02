@@ -1,1 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1000px;
+      margin: auto;
+      padding: 15px;
+    }
+
+    h2, h3 {
+      margin-top: 25px;
+    }
+
+    input, button {
+      padding: 8px;
+      margin: 6px 0;
+      width: 100%;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f4f4f4;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .approved {
+      color: green;
+      font-weight: bold;
+    }
+
+    .blocked {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>Admin Login</h2>
+  <input id="email" type="email" placeholder="Admin Email" />
+  <input id="password" type="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+  <p id="loginErr" style="color:red;"></p>
+</div>
+
+<!-- ADMIN DASHBOARD -->
+<div id="dashboard" class="hidden">
+
+  <h2>Admin Dashboard</h2>
+
+  <!-- USERS -->
+  <h3>Users</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="usersTable"></tbody>
+  </table>
+
+  <!-- TRANSACTIONS -->
+  <h3>All Transactions</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody id="txTable"></tbody>
+  </table>
+
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+/************ CONFIG ************/
+const SUPABASE_URL = "https://ldkwuezxeepksvjsqvsv.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxka3d1ZXp4ZWVwa3N2anNxdnN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMzc2ODIsImV4cCI6MjA4NTYxMzY4Mn0.75ep27FoOm0lJYT4iOpKJbUu8C7McuI5oAhr3j1B8x0";
+const API_BASE = "https://transaction-app-lilac.vercel.app";
+/********************************/
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+
+let session = null;
+
+/* LOGIN */
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    document.getElementById("loginErr").innerText = error.message;
+    return;
+  }
+
+  session = data.session;
+  showDashboard();
+}
+
+/* SHOW DASHBOARD */
+async function showDashboard() {
+  document.getElementById("loginBox").classList.add("hidden");
+  document.getElementById("dashboard").classList.remove("hidden");
+
+  loadUsers();
+  loadTransactions();
+}
+
+/* LOAD USERS */
+async function loadUsers() {
+  const res = await fetch(`${API_BASE}/api/admin/users`, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  const data = await res.json();
+  const body = document.getElementById("usersTable");
+  body.innerHTML = "";
+
+  data.forEach(u => {
+    body.innerHTML += `
+      <tr>
+        <td>${u.email}</td>
+        <td class="${u.approved ? 'approved' : 'blocked'}">
+          ${u.approved ? 'Approved' : 'Blocked'}
+        </td>
+        <td>
+          <button onclick="toggleUser('${u.id}', ${!u.approved})">
+            ${u.approved ? 'Block' : 'Approve'}
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+/* APPROVE / BLOCK USER */
+async function toggleUser(userId, approve) {
+  await fetch(`${API_BASE}/api/admin/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({ userId, approved: approve })
+  });
+
+  loadUsers();
+}
+
+/* LOAD TRANSACTIONS */
+async function loadTransactions() {
+  const res = await fetch(`${API_BASE}/api/admin/transactions`, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  const data = await res.json();
+  const body = document.getElementById("txTable");
+  body.innerHTML = "";
+
+  data.forEach(t => {
+    body.innerHTML += `
+      <tr>
+        <td>${t.user_email || t.user_id}</td>
+        <td>${new Date(t.created_at).toLocaleDateString()}</td>
+        <td>${t.type}</td>
+        <td>${t.amount}</td>
+        <td>${t.note || ""}</td>
+      </tr>
+    `;
+  });
+}
+
+/* LOGOUT */
+async function logout() {
+  await supabase.auth.signOut();
+  location.reload();
+}
+
+/* AUTO LOGIN */
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    session = data.session;
+    showDashboard();
+  }
+})();
+</script>
+
+</body>
+</html>
 
